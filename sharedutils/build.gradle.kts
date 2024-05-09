@@ -3,10 +3,11 @@ plugins {
     alias(libs.plugins.jetbrainsKotlinAndroid)
     alias(libs.plugins.kotlinParcelize)
     alias(libs.plugins.kotlinKapt)
+    alias(libs.plugins.hiltAndroid)
 }
 
 android {
-    namespace = "com.kt.apps.media.api"
+    namespace = "com.kt.apps.media.sharedutils"
     compileSdk = 34
 
     defaultConfig {
@@ -39,12 +40,10 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
-    implementation(libs.retrofit)
-    implementation(libs.gson)
+    implementation(libs.jsoup)
+    implementation(libs.dagger.hilt)
+    kapt(libs.dagger.hilt.compiler)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
-    implementation(project(":sharedutils"))
-    implementation(project(":core:models"))
-
 }

@@ -22,3 +22,7 @@ dependencyResolutionManagement {
 rootProject.name = "XemBongDa"
 include(":app")
 include(":API")
+include(":sharedutils")
+include(":football")
+include(":core")
+include(":core:models")
