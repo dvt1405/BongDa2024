@@ -15,8 +15,6 @@ interface IFootballMatchRepository {
     ): Flow<Player>
 
     suspend fun getLiveMatches(): Flow<List<FootballMatch>>
-    suspend fun filterMatchesByDate(date: String): Deferred<List<FootballMatch>>
-    suspend fun filterMatchesByQuery(query: String): Deferred<List<FootballMatch>>
     suspend fun getLinkLiveStream(match: FootballMatch): Deferred<FootballMatch>
     suspend fun getLinkLiveStream(match: FootballMatch, html: String): Deferred<FootballMatch>
 }

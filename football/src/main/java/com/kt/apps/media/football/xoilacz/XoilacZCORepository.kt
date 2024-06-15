@@ -1,5 +1,6 @@
 package com.kt.apps.media.football.xoilacz
 
+import android.util.Log
 import com.google.gson.Gson
 import com.kt.apps.media.api.IAppSettingsRepository
 import com.kt.apps.media.api.IFootballMatchRepository
@@ -13,10 +14,12 @@ import com.kt.apps.media.sharedutils.ErrorCode
 import com.kt.apps.media.sharedutils.di.coroutinescope.CoroutineDispatcherQualifier
 import com.kt.apps.media.sharedutils.di.coroutinescope.CoroutineDispatcherType
 import com.kt.apps.media.sharedutils.exceptions.NetworkExceptions
+import com.kt.apps.media.sharedutils.getBaseUrl
 import com.kt.apps.media.sharedutils.jsoupParse
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.emitAll
@@ -31,10 +34,13 @@ import okio.IOException
 import org.jsoup.nodes.Element
 import org.jsoup.select.Elements
 import java.util.concurrent.TimeoutException
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.regex.Matcher
 import java.util.regex.Pattern
 import javax.inject.Inject
+import javax.inject.Singleton
 
+@Singleton
 class XoilacZCORepository @Inject constructor(
     private val _httpClient: OkHttpClient,
     private val _appSettings: IAppSettingsRepository,
@@ -43,31 +49,27 @@ class XoilacZCORepository @Inject constructor(
     private val api: XoilacZCOAPI
 ) : IFootballMatchRepository {
     private var _cookie: Map<String, String> = emptyMap()
-    private var _currentItems: List<FootballMatch> = emptyList()
+    private var _currentItems: MutableList<FootballMatch> = mutableListOf()
     private var _lastUpdate: Long = 0
     private var _baseUrl: String = DEFAULT_URL
+    private var _isLoading: AtomicBoolean = AtomicBoolean(false)
 
-    override suspend fun getAllMatches(): Flow<List<FootballMatch>> {
+    override suspend fun getAllMatches(): Flow<List<FootballMatch>> = withContext(_ioDispatcher) {
+        _isLoading.set(true)
         val liveScoreJob: Deferred<XoilacZCOLiveScore> = getLiveScore(_baseUrl)
         if (System.currentTimeMillis() - _lastUpdate < 1000 * 60 * 5 && _currentItems.isNotEmpty()) {
-            return flowOf(_currentItems)
+            return@withContext flowOf(_currentItems)
+                .map {
+                    val liveScore = liveScoreJob.await()
+                    mapWithScoreAndLiveStatus(it, liveScore)
+                }
         }
-        return getAllHtmlItems()
+        return@withContext getAllHtmlItems()
             .map {
                 val liveScore = liveScoreJob.await()
-                it.map {
-                    val footballMatch = it.toFootballMatch()
-                    val score = liveScore.firstOrNull {
-                        "${it.matchId}" == footballMatch.id
-                    }?.let {
-                        "${it.home.score} - ${it.away.score}"
-                    }
-                    footballMatch.copy(
-                        score = score ?: footballMatch.score
-                    )
-                }.also {
+                it.toFootballMatchListWithScore(liveScore).also {
                     synchronized(_currentItems) {
-                        _currentItems = it
+                        _currentItems = it.toMutableList()
                     }
                 }
             }.retryWhen { cause: Throwable, attempt: Long ->
@@ -89,6 +91,10 @@ class XoilacZCORepository @Inject constructor(
                             cause
                         )
                     }
+
+                    else -> {
+                        throw cause
+                    }
                 }
 
             }
@@ -96,7 +102,51 @@ class XoilacZCORepository @Inject constructor(
                 if (it != null && _currentItems.isNotEmpty()) {
                     _lastUpdate = System.currentTimeMillis()
                 }
+                _isLoading.set(false)
             }
+    }
+
+    private fun Elements.toFootballMatchListWithScore(
+        liveScore: XoilacZCOLiveScore
+    ): List<FootballMatch> {
+        return this.map {
+            val match = it.toFootballMatch()
+            val score = liveScore.firstOrNull {
+                "${it.matchId}" == match.id
+            }?.let {
+                "${it.home.score} - ${it.away.score}"
+            }
+            match.copy(score = score ?: match.score)
+        }
+    }
+
+    private fun mapWithScore(
+        it: Elements,
+        liveScore: XoilacZCOLiveScore
+    ) = it.map {
+        val footballMatch = it.toFootballMatch()
+        val score = liveScore.firstOrNull {
+            "${it.matchId}" == footballMatch.id
+        }?.let {
+            "${it.home.score} - ${it.away.score}"
+        }
+        footballMatch.copy(
+            score = score ?: footballMatch.score
+        )
+    }
+
+    private fun mapWithScoreAndLiveStatus(
+        footballMatchList: List<FootballMatch>,
+        liveScore: XoilacZCOLiveScore
+    ) = footballMatchList.map { match ->
+        val matchScore = liveScore.firstOrNull {
+            "${it.matchId}" == match.id
+        } ?: return@map match
+        val liveStatus = matchScore.status.long
+        match.copy(
+            score = "${matchScore.home.score} - ${matchScore.away.score}",
+            liveStatus = liveStatus
+        )
     }
 
     private suspend fun getLiveScore(referer: String = "https://catalystcon.com/") =
@@ -172,12 +222,27 @@ class XoilacZCORepository @Inject constructor(
             countryName = ""
         )
         return FootballMatch(
-            id = matchId,
+            id = matchId.takeIf {
+                it.isNotEmpty()
+            } ?: "${home.name} vs ${away.name}",
+            name = "${home.name} vs ${away.name}",
+            time = kickOffTimeInSecond.toString(),
+            date = try {
+                date.trim().split(" ")[1]
+            } catch (e: Exception) {
+                ""
+            },
+            hour = try {
+                date.trim().split(" ")[0]
+            } catch (e: Exception) {
+                ""
+            },
             homeTeam = home,
             awayTeam = away,
-            date = date,
-            time = kickOffTimeInSecond.toString(),
+            stadium = "",
+            score = score,
             liveStatus = status,
+            league = league,
             streamLink = listOf(
                 Link(
                     link = link,
@@ -189,11 +254,7 @@ class XoilacZCORepository @Inject constructor(
                     linkType = Link.LinkType.SEARCHABLE.value,
                     expired = kickOffTimeInSecond * 1000L + 1000 * 60 * 120 // 120 minutes
                 )
-            ),
-            league = league,
-            score = score,
-            stadium = "",
-            name = "${home.name} vs ${away.name}"
+            )
         )
 
     }
@@ -234,11 +295,12 @@ class XoilacZCORepository @Inject constructor(
         url: String, link: Link, match: FootballMatch,
     ): Player? {
         var streamUrl: String? = null
-        val response = jsoupParse(url, _cookie, Pair("referer", link.link))
+        val response = jsoupParse(url, _cookie, Pair("Referer", url))
         _cookie = _cookie.toMutableMap().also {
             it.putAll(response.cookie)
         }
         val m3u8Dom = response.body
+        Log.d("XoilacZCORepository", "parseM3u8LinkFromFrame: ${response.responseUrl}")
         val scripts = m3u8Dom.getElementsByTag("script")
         for (i in scripts) {
             val html = i.html().trim()
@@ -257,7 +319,11 @@ class XoilacZCORepository @Inject constructor(
                 name = match.name,
                 streamLink = link.copy(
                     link = it,
-                    linkType = Link.LinkType.PLAYABLE.value
+                    linkType = Link.LinkType.PLAYABLE.value,
+                    requestHeader = mapOf(
+                        "Referer" to response.responseUrl.getBaseUrl() + "/",
+                        "Origin" to response.responseUrl.getBaseUrl()
+                    )
                 ),
                 searchableLink = match.streamLink,
                 parentId = match.id
@@ -267,12 +333,19 @@ class XoilacZCORepository @Inject constructor(
 
     override suspend fun getMatchByLink(match: FootballMatch, link: Link): Flow<Player> {
         if (link.linkType == Link.LinkType.PLAYABLE.value) {
+            val searchableLink = _currentItems.indexOfFirst {
+                it.id == match.id
+            }.takeIf {
+                it != -1
+            }?.let {
+                _currentItems[it].streamLink
+            } ?: match.streamLink
             return flowOf(
                 Player(
                     id = link.id,
                     name = match.name,
                     streamLink = link,
-                    searchableLink = match.streamLink,
+                    searchableLink = searchableLink,
                     parentId = match.id
                 )
             )
@@ -280,7 +353,7 @@ class XoilacZCORepository @Inject constructor(
 
         return flow {
             val response = try {
-                jsoupParse(link.link, _cookie, Pair("referer", link.link))
+                jsoupParse(link.link, _cookie, Pair("Referer", link.link))
             } catch (e: Exception) {
                 throw e
             }
@@ -288,14 +361,44 @@ class XoilacZCORepository @Inject constructor(
                 it.putAll(response.cookie)
             }
             val dom = response.body
-            val otherLinks = dom.toOtherLinks()
+            val otherLinks = dom.toOtherLinks().toMutableList()
             val iframes = dom.getElementById("player")!!.getElementsByTag("iframe")
             for (frame in iframes) {
                 val src = frame.attributes().get("src")
-                parseM3u8LinkFromFrame(src, link, match)?.let {
-                    emit(it.copy(searchableLink = otherLinks))
+                parseM3u8LinkFromFrame(src, link, match)?.let { player ->
+                    val finalLink = otherLinks.indexOfFirst {
+                        it.id == player.id
+                    }.takeIf {
+                        it != -1
+                    }?.let {
+                        otherLinks[it] = player.streamLink.copy(
+                            name = otherLinks[it].name
+                        )
+                        otherLinks[it]
+                    } ?: player.streamLink
+                    updateLinkToMatch(match, otherLinks)
+                    emit(player.copy(
+                        searchableLink = otherLinks,
+                        streamLink = finalLink
+                    ).also {
+                        Log.d("XoilacZCORepository", "getMatchByLink: $it")
+                    })
                     return@flow
                 }
+            }
+        }
+    }
+
+    private fun updateLinkToMatch(
+        match: FootballMatch,
+        otherLinks: MutableList<Link>
+    ) {
+        synchronized(_currentItems) {
+            _currentItems.indexOfFirst {
+                it.id == match.id
+            }.takeIf { it != -1 }?.let {
+                _currentItems[it] = _currentItems[it]
+                    .copy(streamLink = otherLinks.toMutableList())
             }
         }
     }
@@ -309,7 +412,7 @@ class XoilacZCORepository @Inject constructor(
                     id = it.attributes().get("href"),
                     name = it.text(),
                     resolution = "",
-                    linkType = Link.LinkType.PLAYABLE.value,
+                    linkType = Link.LinkType.SEARCHABLE.value,
                     streamType = "",
                     expired = System.currentTimeMillis() + 1000 * 60 * 120
                 )
@@ -319,28 +422,23 @@ class XoilacZCORepository @Inject constructor(
         }
     }
 
-    override suspend fun getLiveMatches(): Flow<List<FootballMatch>> {
+    override suspend fun getLiveMatches(): Flow<List<FootballMatch>> = withContext(_ioDispatcher) {
+        while (_isLoading.get()) {
+            delay(50)
+        }
         val allMatchFlow = _currentItems.takeIf {
             it.isNotEmpty()
         }?.let {
             flowOf(it)
         } ?: getAllMatches()
 
-        return allMatchFlow
+        return@withContext allMatchFlow
             .map {
                 it.filter {
-                    System.currentTimeMillis() < it.time.toLong() &&
-                            System.currentTimeMillis() < it.time.toLong()
+                    it.liveStatus.isNotEmpty() && it.liveStatus != "FT"
+                            && it.liveStatus != "KT"
                 }
             }
-    }
-
-    override suspend fun filterMatchesByDate(date: String): Deferred<List<FootballMatch>> {
-        TODO("Not yet implemented")
-    }
-
-    override suspend fun filterMatchesByQuery(query: String): Deferred<List<FootballMatch>> {
-        TODO("Not yet implemented")
     }
 
     override suspend fun getLinkLiveStream(match: FootballMatch): Deferred<FootballMatch> {

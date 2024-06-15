@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "387163538972",
+    "firebase_url": "https://xembongda2023-97c07-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "xembongda2023-97c07",
+    "storage_bucket": "xembongda2023-97c07.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:387163538972:android:334427b09f5270338e81d9",
+        "android_client_info": {
+          "package_name": "com.kt.apps.media.football"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "387163538972-46ilasmrsoltl2jc4rv882akca65tjau.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.kt.apps.media.football",
+            "certificate_hash": "540ad001d2af4fc158bc73161ad6e8a2e8ac5627"
+          }
+        },
+        {
+          "client_id": "387163538972-sobiltrcfssfk5bth1dqp7mus3bhcu59.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA7RdjbgCS67O5rSXqvDlqOVOvIGU7gATk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "387163538972-sobiltrcfssfk5bth1dqp7mus3bhcu59.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

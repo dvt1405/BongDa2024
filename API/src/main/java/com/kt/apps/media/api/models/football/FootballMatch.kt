@@ -10,6 +10,7 @@ data class FootballMatch(
     val name: String,
     val time: String,
     val date: String,
+    val hour: String,
     val homeTeam: FootballTeam,
     val awayTeam: FootballTeam,
     val stadium: String,

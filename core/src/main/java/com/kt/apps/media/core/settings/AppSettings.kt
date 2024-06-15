@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.singleOrNull
+import kotlinx.coroutines.flow.toCollection
 import javax.inject.Inject
 
 class AppSettings @Inject constructor(
@@ -35,10 +36,8 @@ class AppSettings @Inject constructor(
     }
 
     override suspend fun getMapData(key: String): Map<String, String>? {
-        Log.d("AppSettings", "getMapData: $key")
         return context.dataStore.data
             .catch {
-                Log.e("AppSettings", "getMapData: ${it.message}", it)
                 emit(emptyPreferences())
             }
             .map {
@@ -109,6 +108,11 @@ class AppSettings @Inject constructor(
     }
 
     override suspend fun isFirstTimeUser(): Boolean {
+        context.dataStore.data
+            .singleOrNull()
+            .let {
+                Log.d("AppSettings", "data: $it")
+            }
         return context.dataStore.data.last()[booleanPreferencesKey("is_first_time")] ?: true
     }
 

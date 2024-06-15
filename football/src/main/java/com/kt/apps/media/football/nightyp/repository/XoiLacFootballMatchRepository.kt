@@ -33,13 +33,6 @@ class XoiLacFootballMatchRepository @Inject constructor(
         TODO("Not yet implemented")
     }
 
-    override suspend fun filterMatchesByDate(date: String): Deferred<List<FootballMatch>> {
-        TODO("Not yet implemented")
-    }
-
-    override suspend fun filterMatchesByQuery(query: String): Deferred<List<FootballMatch>> {
-        TODO("Not yet implemented")
-    }
 
     override suspend fun getLinkLiveStream(match: FootballMatch): Deferred<FootballMatch> {
         TODO("Not yet implemented")

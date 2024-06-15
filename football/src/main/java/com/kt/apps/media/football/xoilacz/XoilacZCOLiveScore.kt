@@ -21,9 +21,9 @@ data class Status(
 )
 
 data class Home(
-    val score: Int
+    val score: String
 )
 
 data class Away(
-    val score: Int
+    val score: String
 )

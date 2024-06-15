@@ -7,7 +7,7 @@ data class Player(
     val name: String,
     val streamLink: Link,
     val searchableLink: List<Link>,
-    val parentId: String
+    val parentId: String,
 ) {
     override fun toString(): String {
         return "Player(id='$id'," +

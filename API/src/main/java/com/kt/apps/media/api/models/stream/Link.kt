@@ -12,7 +12,8 @@ data class Link(
     val name: String,
     val id: String,
     val linkType: String,
-    val streamType: String? = null
+    val streamType: String? = null,
+    val requestHeader: Map<String, String>? = null
 ) : Parcelable {
     enum class LinkType(
         val value: String
